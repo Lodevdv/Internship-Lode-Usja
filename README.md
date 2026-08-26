@@ -9,3 +9,11 @@ Subsequently, we performed downstream processing to use these results in the RSh
 - Conserved markers analysis based on Wilcoxon-rank test results
 - GSEA and ORA for pathway inference
 - Module analysis using (py)UCell
+
+Finally, the RShiny app was created with the following tabs:
+- Gene plots
+- Metadata plots
+- Marker filtering
+- Forest plots for DESeq2 results
+- TF inference results
+- UCell module finding
