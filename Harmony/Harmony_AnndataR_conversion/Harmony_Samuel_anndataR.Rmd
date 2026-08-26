@@ -1,0 +1,161 @@
+---
+title: "Harmony_Samuel_anndataR"
+output: html_document
+date: "2026-08-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Here, the final integrated Seurat object of the Samuels' analysis will be converted to an AnnData object, to later harmonize the dataset using scVI.
+
+```{r}
+library(anndataR)
+library(renv)
+library(Seurat)
+```
+
+Load in object
+```{r}
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Final_app_objects/SeuratObjT_Harmomy_Treat_Exp_V2.rds")
+```
+
+Make the working object (for AnndataR) smaller
+```{r}
+SeuratObj_small <- DietSeurat(
+    SeuratObj,
+    assays = "RNA",
+    layers = c("counts", "data"),
+    dimreducs = c("harmony", "harmony_umap", "RNA_pca_int", "RNA_umap"),
+    graphs = "neighbors"
+)
+```
+
+```{r}
+saveRDS(SeuratObj_small, "data/Samuel_data_Harmony_small.rds")
+```
+
+Load in smaller file
+```{r}
+SeuratObj_small <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Harmony/Harmony_AnndataR_conversion/data/Samuel_data_Harmony_small.rds")
+```
+
+```{r}
+DefaultAssay(SeuratObj_small) <- "RNA"
+```
+
+```{r}
+SeuratObj_small <- JoinLayers(SeuratObj_small, assay = "RNA")
+```
+
+Conversion to adata
+```{r}
+adata <- as_AnnData(
+  SeuratObj_small,
+  assay_name  = "RNA",
+  x_mapping   = "counts",     # or "counts", whichever you use downstream
+  obsm_mapping = list(
+    RNA_pca_int      = "RNA_pca_int",       # LHS = obsm key you want, RHS = Seurat reduction name
+    RNA_umap         = "RNA_umap",
+    RNA_harmony      = "harmony",
+    RNA_harmony_umap = "harmony_umap"
+  )
+)
+```
+
+
+```{r}
+adata
+```
+
+```{r}
+head(adata$obsm)
+head(str(adata$obsm[["RNA_harmony"]]))
+head(dim(adata$obsm[["RNA_harmony"]]) )  # should be n_cells x n_dims, not NULL
+```
+
+Verify that the adata object and the Seurat objects are the same 
+```{r}
+adata
+print("-------------------------")
+SeuratObj
+```
+Seurat stores matrices as features x cells, and AnnData as observations x variables, which explains the transposed dimensions. The Seurat object holds 10 more features, because it holds another assay: HTO. The RNA layers are the same
+
+```{r}
+# Genes in Seurat but not in AnnData
+lost_genes <- setdiff(rownames(SeuratObj), rownames(adata$var))
+lost_genes
+
+length(lost_genes)
+
+# Genes in AnnData but not in Seurat
+extra_genes <- setdiff(rownames(adata$var), rownames(SeuratObj))
+extra_genes
+
+sum(duplicated(rownames(SeuratObj)))
+sum(duplicated(rownames(adata$var)))
+```
+These metrics show no differences? So how come the adata object have less dimensions?
+
+```{r}
+dim(SeuratObj)
+dim(adata)
+
+nrow(SeuratObj)
+ncol(SeuratObj)
+
+adata$shape
+```
+
+```{r}
+# shape
+dim(SeuratObj)         # genes × cells
+adata$shape      # cells × genes
+print("-----------head and tail----------")
+
+# head and tail content
+head(colnames(SeuratObj))
+head(rownames(adata$obs))
+
+tail(colnames(SeuratObj))
+tail(rownames(adata$obs))
+
+print("-----------gene names-----------")
+# gene names 
+head(rownames(SeuratObj))
+head(rownames(adata$var))
+
+tail(rownames(SeuratObj))
+tail(rownames(adata$var))
+print("-------------expression matrix--------------")
+
+
+# expression matrix
+LayerData(SeuratObj, assay = "RNA", layer = "counts")[1:5, 1:5]
+
+adata$layers[["counts"]][1:5, 1:5]
+
+print("-------------cell metadata--------------")
+
+# cell metadata
+head(SeuratObj@meta.data)
+
+head(as.data.frame(adata$obs))
+
+```
+
+
+```{r}
+write_h5ad(
+  adata,
+  path = "data/Harmony_RNA_Samuel_anndataR.h5ad",
+  mode = "w"
+)
+```
+
+
+

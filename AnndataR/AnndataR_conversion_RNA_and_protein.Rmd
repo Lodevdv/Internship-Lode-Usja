@@ -1,0 +1,254 @@
+---
+title: "AnndataR_RNA_and_protein"
+output: html_document
+date: "2026-07-29"
+---
+
+## R Markdown
+
+---
+title: "AnndataR"
+output: html_document
+date: "2026-07-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Here, the final integrated Seurat object of the Samuels' analysis will be converted to an AnnData object, to later harmonize the dataset using totalVI.
+
+```{r}
+library(anndataR)
+library(renv)
+library(Seurat)
+library(Matrix)
+library(ggplot2)
+```
+
+install BioCManager in renv
+```{r}
+#if (!requireNamespace("BiocManager", quietly = #TRUE)) {
+#  install.packages("BiocManager")
+#}
+#BiocManager::install("anndataR")
+```
+
+
+```{r}
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Final_app_objects/Harmony_Treat_Exp_Tech_ADT_Multi_VIS.rds")
+```
+
+Proteins present in the object:
+```{r}
+SeuratObj[["ADT"]]
+```
+
+```{r}
+rownames(SeuratObj@assays$ADT$data)
+```
+
+Filtering is done based on the isotype control I think, so everything below that count is removed
+
+```{r}
+
+assay_name <- "ADT"
+
+print(Layers(SeuratObj[[assay_name]]))   # inspect what's actually there
+
+SeuratObj <- JoinLayers(SeuratObj, assay = assay_name)
+
+print(Layers(SeuratObj[[assay_name]]))   # should now show a single "counts" (+ maybe "data")
+
+counts <- GetAssayData(SeuratObj, assay = assay_name, layer = "counts")
+cat("Features:", nrow(counts), "| Cells:", ncol(counts), "\n")
+
+## -----------------------------------------------------------------
+## 1. Total counts per feature (summed across all cells), ranked.
+## -----------------------------------------------------------------
+total_counts <- Matrix::rowSums(counts)
+total_counts_sorted <- sort(total_counts)
+
+cat("\n--- Lowest 30 features by total count ---\n")
+print(head(total_counts_sorted, 30))
+
+cat("\n--- Summary of total counts across all features ---\n")
+print(summary(total_counts))
+
+## -----------------------------------------------------------------
+## 2. Flag any isotype/control features still present -- these are
+##    your natural background reference. A real marker with a total
+##    count at or below an isotype control's total is presumably
+##    nonspecific binding, not biology.
+## -----------------------------------------------------------------
+isotype_like <- grep("igg|isotype|rat ig|hamster ig|streptavidin",
+                      rownames(counts), ignore.case = TRUE, value = TRUE)
+cat("\n--- Isotype/control-like features detected in this object ---\n")
+if (length(isotype_like) > 0) {
+  print(total_counts[isotype_like])
+} else {
+  cat("None found -- you'll need to set a threshold manually / by distribution shape.\n")
+}
+
+## -----------------------------------------------------------------
+## 3. Plot ranked total counts (log10) to see where signal drops off,
+##    with isotype control(s) marked for reference.
+## -----------------------------------------------------------------
+df <- data.frame(
+  feature = names(total_counts_sorted),
+  total   = total_counts_sorted,
+  rank    = seq_along(total_counts_sorted)
+)
+df$is_isotype <- df$feature %in% isotype_like
+
+p <- ggplot(df, aes(x = rank, y = total + 1, color = is_isotype)) +
+  geom_point() +
+  scale_y_log10() +
+  scale_color_manual(values = c("FALSE" = "grey40", "TRUE" = "red")) +
+  labs(x = "Feature rank (low to high)", y = "Total counts (log10, +1)",
+       color = "Isotype/control",
+       title = "Ranked ADT total counts per feature") +
+  theme_bw()
+print(p)
+
+## -----------------------------------------------------------------
+## 4. SET YOUR THRESHOLD HERE.
+##    Option A (recommended if isotype controls are present): use the
+##    max isotype control total as the cutoff.
+##    Option B: pick a number by eye from the plot/printed table above.
+## -----------------------------------------------------------------
+if (length(isotype_like) > 0) {
+  threshold <- max(total_counts[isotype_like])
+  cat("\nSuggested threshold (max isotype control total counts):", threshold, "\n")
+} else {
+  threshold <- NA  # <-- set manually, e.g. threshold <- 500
+}
+
+# threshold <- 500   # <-- uncomment/edit to override the suggestion above
+
+stopifnot(!is.na(threshold))
+
+## -----------------------------------------------------------------
+## 5. Apply the filter and rebuild the assay.
+## -----------------------------------------------------------------
+keep_features <- names(total_counts)[total_counts >= threshold]
+dropped_features <- setdiff(rownames(counts), keep_features)
+
+cat("\nDropping", length(dropped_features), "low-count features:\n")
+print(dropped_features)
+cat("\nKeeping", length(keep_features), "features.\n")
+
+new_counts <- counts[keep_features, ]
+
+new_assay <- CreateAssay5Object(counts = new_counts)
+SeuratObj[[assay_name]] <- new_assay
+DefaultAssay(SeuratObj) <- assay_name
+
+```
+Verify the filtering
+```{r}
+rownames(SeuratObj@assays$ADT)
+```
+
+Turn it into an anndata object
+```{r}
+## -----------------------------------------------------------------
+## 1. Convert the RNA assay to AnnData. X = raw counts.
+##    obsm_mapping = TRUE here will pick up any existing Seurat
+##    reductions (PCA/UMAP) if present -- fine to keep.
+## -----------------------------------------------------------------
+adata <- as_AnnData(
+  SeuratObj,
+  assay_name    = "RNA",
+  x_mapping     = "counts",
+  layers_mapping = FALSE,    # raw counts only -- don't carry over data/scale.data
+  obs_mapping   = TRUE,
+  obsm_mapping  = TRUE,
+  varm_mapping  = TRUE,
+  obsp_mapping  = TRUE,
+  uns_mapping   = TRUE,
+  output_class  = "InMemory"
+)
+
+adata
+
+## -----------------------------------------------------------------
+## 2. Pull out ADT counts and format for obsm: AnnData obsm arrays
+##    must be (n_obs x n_features), i.e. cells x proteins -- the
+##    TRANSPOSE of how Seurat stores it (features x cells).
+## -----------------------------------------------------------------
+adt_counts <- GetAssayData(SeuratObj, assay = "ADT", layer = "counts")
+
+## CRITICAL: obsm rows must align 1:1, in the same order, with
+## adata$obs (i.e. with colnames(SeuratObj)). If ADT and RNA ever had
+## different cells filtered (e.g. you subset one assay but not the
+## other), this alignment will silently break. Verify explicitly:
+stopifnot(identical(colnames(adt_counts), colnames(SeuratObj)))
+
+adt_mat <- as.matrix(t(adt_counts))   # now cells x proteins
+
+## -----------------------------------------------------------------
+## 3. Attach to obsm. Name follows the scvi-tools/totalVI convention
+##    ("protein_expression") -- rename if you're using something else.
+## -----------------------------------------------------------------
+## HDF5 uses '/' internally as a path/group separator, so protein
+## names containing a literal '/' (e.g. "F4/80", "TCR g/d-0121")
+## break dataset creation when used as column names. Sanitize before
+## writing, and keep the original names recoverable in uns.
+original_protein_names <- colnames(adt_mat)
+safe_protein_names <- gsub("/", "_", original_protein_names, fixed = TRUE)
+
+if (any(safe_protein_names != original_protein_names)) {
+  cat("Sanitized protein names containing '/':\n")
+  changed <- which(safe_protein_names != original_protein_names)
+  print(data.frame(original = original_protein_names[changed],
+                    sanitized = safe_protein_names[changed]))
+}
+
+colnames(adt_mat) <- safe_protein_names
+
+adt_df <- as.data.frame(adt_mat)
+
+## CRITICAL: explicitly force the row index to the cell barcodes.
+## Relying on as.data.frame() to carry rownames through write_h5ad()
+## silently failed -- it defaulted to sequential integers ("1", "2", ...)
+## which breaks AnnData's requirement that an obsm data.frame's index
+## match adata.obs_names exactly (this is what caused the Python
+## ValueError on read).
+rownames(adt_df) <- colnames(SeuratObj)
+
+## Validate against AnnData's own obs_names BEFORE writing -- fail
+## here in R (easy to debug) rather than after writing to h5ad and
+## discovering it in Python.
+stopifnot(identical(rownames(adt_df), adata$obs_names))
+
+adata$obsm[["protein_expression"]] <- adt_df
+
+## Re-check post-assignment, since the assignment step itself could
+## still silently coerce/drop the index depending on how anndataR's
+## obsm setter handles data.frames.
+stopifnot(identical(rownames(adata$obsm[["protein_expression"]]), adata$obs_names))
+
+## Keep the ORIGINAL (pre-sanitized) names too, so you can map back
+## if needed -- order matches the sanitized columns above 1:1.
+adata$uns[["protein_names"]] <- original_protein_names
+```
+Check the AnnData object
+```{r}
+head(adata$obsm$protein_expression)
+head(adata$X)
+```
+
+
+Write out
+```{r}
+write_h5ad(adata, "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/AnndataR/AnndataR_RNA_and_protein.h5ad")
+```
+
+```{r}
+adata_check <- read_h5ad("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/AnndataR/AnndataR_RNA_and_protein.h5ad")
+identical(rownames(adata_check$obsm[["protein_expression"]]), adata_check$obs_names)
+```
+

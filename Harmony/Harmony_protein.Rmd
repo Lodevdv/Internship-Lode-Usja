@@ -1,0 +1,128 @@
+---
+title: "Harmony_protein"
+output: html_document
+date: "2026-07-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this script, we integrate the cDC1 dataset using Harmony, for the orig.ident, experiment and treatment layers.
+
+Before we can run Harmony, we still need to remove 3 proteins with zero counts in the whole assay, and change a typo in the "experiment" layer. The proteins don't need to be removed now, as we will only integrate based on the RNA information. 
+
+```{r}
+library("renv")
+library("Seurat")
+library("harmony")
+library("ggplot2")
+```
+
+Load in object
+```{r}
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Final_app_objects/Harmony_Treat_Exp_Tech_ADT_Multi_VIS.rds")
+```
+
+Below, we will first fix the typo.
+```{r}
+SeuratObj$experiment <- ifelse(
+  SeuratObj$experiment == "CITEseq_LNP_pIC_LNPS",
+  "CITEseq_LNP_pIC_LNPs",
+  SeuratObj$experiment
+)
+```
+Now, fix the proteins
+
+```{r}
+# Assumes your Seurat object is named 'SeuratObj' and protein assay is 'ADT'
+# (If your assay is named 'protein', replace "ADT" with "protein")
+
+# 1. Join layers on the ADT assay so all cells are in one contiguous matrix
+SeuratObj[["ADT"]] <- JoinLayers(SeuratObj[["ADT"]])
+
+# 2. Now GetAssayData will work smoothly without errors!
+protein_counts <- GetAssayData(SeuratObj, assay = "ADT", layer = "counts") 
+
+# 3. Calculate row sums across all cells for each protein
+protein_sums <- Matrix::rowSums(protein_counts)
+
+# 4. Identify non-zero proteins
+expressed_proteins <- names(protein_sums[protein_sums > 0])
+num_removed <- length(protein_sums) - length(expressed_proteins)
+
+cat(sprintf("Removing %d zero-expression proteins.\n", num_removed))
+
+# 5. Subset the protein assay in place
+SeuratObj[["ADT"]] <- subset(SeuratObj[["ADT"]], features = expressed_proteins)
+```
+
+Next, we will re-run some preprocessing for good practice, before integration
+```{r}
+DefaultAssay(SeuratObj) <- "ADT"
+SeuratObj <- JoinLayers(SeuratObj)
+
+SeuratObj <- NormalizeData(SeuratObj, normalization.method = "CLR", margin = 2)
+all.genes <- rownames(SeuratObj)
+SeuratObj <- ScaleData(SeuratObj, features = rownames(SeuratObj[["ADT"]]))
+SeuratObj <- RunPCA(SeuratObj, 
+                     features = rownames(SeuratObj[["ADT"]]),
+                     npcs = 50,
+                     ndims.print = 1:5, nfeatures.print = 10,
+                     assay = "ADT",
+                     reduction.name = "ADT_pca_int",
+                     reduction.key = "adtPC_int_")
+```
+
+Run Harmony. We integrate based on 4 categories: treatment, which holds WT or test; experiment, which holds the different treatments (We know, confusing); orig.ident, which holds the different samples; tech, which holds A or B, referring to A: all treatments except CITEseq_Toxo, and B: CITEseq_Toxo group. 
+
+```{r}
+SeuratObj <- RunHarmony(SeuratObj, 
+                         group.by.vars =c("treatment","experiment","orig.ident", "tech"), 
+                         plot_convergence =TRUE, 
+                         reduction.use ="ADT_pca_int",
+                         reduction.save ="ADT_harmony",
+                         theta=c(4,2,2,6),
+                         sigma=0.2, 
+                         lambda=1,
+                         verbose=TRUE
+)
+
+```
+
+
+Find clusters to visualize results
+```{r}
+SeuratObj <- FindNeighbors(SeuratObj,reduction = "ADT_harmony",dims = 1:10)
+SeuratObj <- FindClusters(SeuratObj, resolution = 1)
+SeuratObj <- RunUMAP(SeuratObj,reduction = "ADT_harmony",dims = 1:10,reduction.name = "ADT_harmony_umap")
+```
+
+Create plot
+```{r, fig.width=12, fig.height=10, dpi=300}
+# Plot UMAP colored by batch/treatment variables
+p1 <- DimPlot(SeuratObj, reduction = "ADT_harmony_umap", group.by = "treatment") + 
+  ggtitle("Harmony_ADT: treatment")
+
+p2 <- DimPlot(SeuratObj, reduction = "ADT_harmony_umap", group.by = "experiment") + 
+  ggtitle("Harmony_ADT: experiment")
+
+p3 <- DimPlot(SeuratObj, reduction = "ADT_harmony_umap", group.by = "seurat_clusters", label = TRUE) + 
+  ggtitle("Harmony_ADT: Clusters")
+
+p4 <- DimPlot(SeuratObj, reduction = "ADT_harmony_umap", group.by = "celltype_new", label = TRUE) + 
+  ggtitle("Harmony_ADT: celltype")
+
+p5 <- DimPlot(SeuratObj, reduction = "ADT_harmony_umap", group.by = "tech", label = TRUE) + 
+  ggtitle("Harmony_ADT: tech")
+p1
+p2
+p3
+p4
+p5
+```
+
+Save object
+```{r}
+saveRDS(SeuratObj,"Harmony_protein_integrated.rds")
+```

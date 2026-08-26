@@ -1,0 +1,138 @@
+---
+title: "AnndataR_conversion_protein"
+output: html_document
+date: "2026-07-29"
+---
+
+---
+title: "AnndataR"
+output: html_document
+date: "2026-07-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(anndataR)
+library(renv)
+library(Seurat)
+```
+
+install BioCManager in renv
+```{r}
+#if (!requireNamespace("BiocManager", quietly = #TRUE)) {
+#  install.packages("BiocManager")
+#}
+#BiocManager::install("anndataR")
+```
+
+
+```{r}
+
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Final_app_objects/Harmony_Treat_Exp_Tech_ADT_Multi_VIS.rds")
+
+```
+
+```{r}
+DefaultAssay(SeuratObj) <- "ADT"
+SeuratObj  <- JoinLayers(SeuratObj, assay = "ADT")
+```
+
+
+```{r}
+adata <- as_AnnData(
+  SeuratObj,
+  x_mapping     = "counts",
+  layers_mapping = c(data= "data"),    # raw counts only -- don't carry over data/scale.data
+  obs_mapping   = TRUE,
+  obsm_mapping  = FALSE,
+  varm_mapping  = FALSE,
+  obsp_mapping  = FALSE,
+  uns_mapping   = FALSE,
+  output_class  = "InMemory"
+)
+```
+
+Verify that the adata object and the Seurat objects are the same 
+```{r}
+adata
+print("-------------------------")
+SeuratObj
+```
+Seurat stores matrices as features x cells, and AnnData as observations x variables, which explains the transposed dimensioms. The Seurat object holds 10 more features, because it holds another assay: HTO. The RNA layers are the same
+
+```{r}
+# Genes in Seurat but not in AnnData
+lost_genes <- setdiff(rownames(SeuratObj), rownames(adata$var))
+lost_genes
+
+length(lost_genes)
+
+# Genes in AnnData but not in Seurat
+extra_genes <- setdiff(rownames(adata$var), rownames(SeuratObj))
+extra_genes
+
+sum(duplicated(rownames(SeuratObj)))
+sum(duplicated(rownames(adata$var)))
+```
+These metrics show no differences? So how come the adata object have less dimensions?
+
+```{r}
+dim(SeuratObj)
+dim(adata)
+
+nrow(SeuratObj)
+ncol(SeuratObj)
+
+adata$shape
+```
+
+```{r}
+# shape
+dim(SeuratObj)         # genes × cells
+adata$shape      # cells × genes
+print("-----------head and tail----------")
+
+# head and tail content
+head(colnames(SeuratObj))
+head(rownames(adata$obs))
+
+tail(colnames(SeuratObj))
+tail(rownames(adata$obs))
+
+print("-----------gene names-----------")
+# gene names 
+head(rownames(SeuratObj))
+head(rownames(adata$var))
+
+tail(rownames(SeuratObj))
+tail(rownames(adata$var))
+print("-------------expression matrix--------------")
+
+
+# expression matrix
+LayerData(SeuratObj, assay = "RNA", layer = "counts")[1:5, 1:5]
+
+adata$layers[["counts"]][1:5, 1:5]
+
+print("-------------cell metadata--------------")
+
+# cell metadata
+head(SeuratObj@meta.data)
+
+head(as.data.frame(adata$obs))
+
+```
+
+
+```{r}
+write_h5ad(
+  adata,
+  path = "AnnDataR_protein.h5ad",
+  mode = "w"
+)
+```
+

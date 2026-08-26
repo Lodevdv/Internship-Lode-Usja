@@ -1,0 +1,205 @@
+---
+title: "Harmony_protein"
+output: html_document
+date: "2026-07-31"
+---
+
+In this markdown, we create a WNN of the integrated protein and RNA data
+
+```{r}
+library("Seurat")
+library("ggplot2")
+```
+
+Load in data
+```{r}
+rna_obj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Harmony/Harmony_RNA_integrated.rds")
+protein_obj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Harmony/Harmony_protein_integrated.rds") # has 3 proteins already removed
+```
+
+Join the 2 datasets
+
+```{r}
+# Copy the ADT assay into the RNA object
+SeuratobjectMulti <- rna_obj
+SeuratobjectMulti[["ADT"]] <- protein_obj[["ADT"]]
+
+# Copy the ADT Harmony reduction into the RNA object
+# (Replace 'harmony' or 'harmony_adt' with whatever your protein reduction is named inside protein_obj)
+adt_harmony_reduction_name <- "ADT_harmony" # Check via names(protein_obj@reductions)
+
+SeuratobjectMulti[["ADT_harmony"]] <- protein_obj[[adt_harmony_reduction_name]]
+# this block throws a warning because rna_obj also has an ADT assay, which is overwritten 
+```
+
+Perform WNN
+```{r}
+
+SeuratobjectMulti <- FindMultiModalNeighbors(
+  SeuratobjectMulti, 
+  reduction.list = list("RNA_harmony", "ADT_harmony"), 
+  dims.list = list(1:30, 1:10), 
+  modality.weight.name = "RNA.weight"
+)
+```
+
+Clustering and visualization
+
+```{r}
+SeuratobjectMulti <- RunUMAP(SeuratobjectMulti,
+                             nn.name = "weighted.nn",
+                             reduction.name = "wnn.umap_CITE_seq",
+                             reduction.key = "wnnUMAPciteseq_")
+
+SeuratobjectMulti <- FindClusters(SeuratobjectMulti, 
+                                  graph.name = "wsnn",
+                                  algorithm = 3, 
+                                  resolution = 1, 
+                                  verbose = TRUE)
+
+```
+
+Create plot
+```{r, fig.width=12, fig.height=10, dpi=300}
+# Plot UMAP colored by batch/treatment variables
+p1 <- DimPlot(SeuratobjectMulti, reduction = "wnn.umap_CITE_seq", group.by = "treatment") + 
+  ggtitle("Harmony_CITEseq: treatment")
+
+p2 <- DimPlot(SeuratobjectMulti, reduction = "wnn.umap_CITE_seq", group.by = "experiment") + 
+  ggtitle("Harmony_CITEseq: experiment")
+
+p3 <- DimPlot(SeuratobjectMulti, reduction = "wnn.umap_CITE_seq", group.by = "seurat_clusters", label = TRUE) + 
+  ggtitle("Harmony_CITEseq: Clusters")
+
+p4 <- DimPlot(SeuratobjectMulti, reduction = "wnn.umap_CITE_seq", group.by = "celltype_new", label = TRUE) + 
+  ggtitle("Harmony_CITEseq: celltype")
+
+p5 <- DimPlot(SeuratobjectMulti, reduction = "wnn.umap_CITE_seq", group.by = "tech", label = TRUE) + 
+  ggtitle("Harmony_CITEseq: tech")
+
+p1
+p2
+p3
+p4
+p5
+```
+
+Write out 
+
+```{r}
+saveRDS(SeuratobjectMulti,"C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Harmony/Harmony_RNA_protein_integrated_WNN.rds")
+```
+
+More visualizations:
+Now make a dotplot to verify the clusters
+```{r}
+markers <- list(
+  "Pre_cDC1"       = c("Ccr2", "Fcer1g", "Cd24a", "Vim"), 
+  "Early_Immature" = c("Sell", "Creld2", "Pdia4"),
+  "Late_Immature"  = c("Cd207", "Itgae", "Apol7c", "Apoe", "Dnase1l3", "Cadm1", "Xcr1", "Cd83", "Cd86"), 
+  "Early_Mature"   = c("Cxcl10", "Cxcl9", "Iigp1", "Ifi47", "Gbp2", "Gbp5", "Cd40"),
+  "Late_Mature"    = c("Cd63", "Fscn1", "Il4i1", "Socs2", "Ccr7")
+)
+```
+Make the plot itself
+```{r}
+DotPlot(SeuratobjectMulti, features = markers, group.by = "seurat_clusters") + 
+  RotatedAxis() +
+  scale_color_viridis_c() +
+  labs(x = "Markers", y = "Clusters / Cell Types")
+```
+
+Featureplots:
+```{r}
+print("======================Proliferating cDC1s======================")
+FeaturePlot(
+  SeuratobjectMulti, 
+  features = markers[["Pre_cDC1"]], 
+  ncol = 3, 
+  reduction = "wnn.umap_CITE_seq"
+)
+print("======================Early Immature======================")
+FeaturePlot(
+  SeuratobjectMulti, 
+  features = markers[["Early_Immature"]], 
+  ncol = 2, 
+  reduction = "wnn.umap_CITE_seq"
+)
+print("=======================Late Immature=====================")
+FeaturePlot(
+  SeuratobjectMulti, 
+  features = markers[["Late_Immature"]], 
+  ncol = 3, 
+  reduction = "wnn.umap_CITE_seq"
+)
+print("======================Early Mature======================")
+FeaturePlot(
+  SeuratobjectMulti, 
+  features = markers[["Early_Mature"]], 
+  ncol = 3, 
+  reduction = "wnn.umap_CITE_seq"
+)
+print("======================Late Mature======================")
+FeaturePlot(
+  SeuratobjectMulti, 
+  features = markers[["Late_Mature"]], 
+  ncol = 3, 
+  reduction = "wnn.umap_CITE_seq"
+)
+```
+
+Multi-page report: 
+```{r}
+library(patchwork)
+
+pdf("cDC1_Marker_Expression_Summary_CITEseq.pdf", width = 11, height = 8.5)
+
+for (subset_name in names(markers)) {
+  
+  gene_list  <- markers[[subset_name]]
+  gene_count <- length(gene_list)
+  
+  # Determine grid dimensions to keep panel sizes uniform
+  if (gene_count <= 3) {
+    num_cols <- 3
+    num_rows <- 1
+  } else if (gene_count <= 6) {
+    num_cols <- 3
+    num_rows <- 2
+  } else {
+    num_cols <- 3
+    num_rows <- 3
+  }
+  
+  # 1. Create the base FeaturePlot
+  p <- FeaturePlot(
+    SeuratobjectMulti,
+    features  = gene_list,
+    ncol      = num_cols,
+    reduction = "wnn.umap_CITE_seq"
+  ) & 
+  # Force 1:1 aspect ratio so UMAPs stay square, never stretched
+  theme(
+    aspect.ratio = 1,
+    plot.title   = element_text(size = 11, face = "bold"),
+    axis.title   = element_text(size = 8),
+    axis.text    = element_text(size = 7)
+  )
+  
+  # 2. Enforce explicit row/column dimensions with patchwork
+  p_formatted <- p + 
+    plot_layout(ncol = num_cols, nrow = num_rows) +
+    plot_annotation(
+      title    = paste("Subset:", subset_name),
+      subtitle = paste("Genes:", paste(gene_list, collapse = ", ")),
+      theme    = theme(
+        plot.title    = element_text(size = 18, face = "bold", color = "#1A365D"),
+        plot.subtitle = element_text(size = 12, color = "#4A5568", face = "italic")
+      )
+    )
+  
+  print(p_formatted)
+}
+
+dev.off()
+```

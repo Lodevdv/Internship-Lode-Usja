@@ -1,0 +1,58 @@
+---
+title: "RShiny_app_testing"
+output: html_document
+date: "2026-08-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load libraries
+```{r}
+library("renv")
+library("Seurat")
+library("anndataR")
+```
+
+object
+```{r}
+obj <- read_h5ad("c:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Annotation_Comparison/final_annotation_2026.h5ad", as = "Seurat")
+```
+
+# Seurat object with the final celltype annotation made in 2026 during Lode's internship under Clint's guidance.
+# This object holds only the RNA layer, as that's the assay used for the downstream analysis. The object holds several annotations, of which the celltype_final_2026
+# is the final one. The object holds several integrated layers (scANVI, scVI and several Harmony integrations)
+# Of these integrations, the Harmony one of Samuel's integration was used for downstream processing. The UMAP of this integration is also present in the object.
+# Furthermore, the RNA assay holds 3 layers: counts, data and X, which all hold the counts (So they are redundant?), no scaled data is present, as that would bloat
+# the object.
+
+# The important metadata in the object, is: orig.ident (holds experiment data), seurat_clusters (leiden clusters, or louvain?), experiment (holds the experiment perforned), treatment (Test or WT), tech (A or B, referring to 3' or 5' sequencing I think, only Toxo has a different sequencing method), leiden_1 and leiden_2 (referring to leiden resolution used), and celltype_final_2026 
+
+# Additional information calculated in the downstream analysis were: 
+# - Conserved markers (significant across all celltypes) (C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Downstream_processing/conserved_markers_summary.pdf)
+
+# - Marker list, just all genes with a LogFC, pval and how many times significant (C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Downstream_processing/all_ranked_markers_summary.xlsx)
+
+# - TF scores using the pseudobulk samples (C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\TF)
+# - GSEA and ORA analysis for each celltype in each experiment (C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\GSEA and C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\ORA)
+
+# - DESeq2 results from LNP vs WT, Toxo vs LNP and Toxo Test vs WT (C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\DESeq2)
+
+```{r}
+obj@meta.data
+```
+
+The object did not fix the SAM06 mistake
+```{r}
+obj$treatment[obj$orig.ident == "SAM06"] <- "WT"
+
+table(obj$orig.ident[obj$orig.ident == "SAM06"],
+      obj$treatment[obj$orig.ident == "SAM06"])
+```
+
+Write out
+```{r}
+saveRDS(obj, "RShiny_tool_object.rds")
+```
+

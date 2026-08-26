@@ -1,0 +1,140 @@
+---
+title: "Harmony_AnndataR_conversion_RNA"
+output: html_document
+date: "2026-08-03"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Here, we convert our Harmony integrations to AnnData. There is a problem, since AnndataR will not convert obsm layers too, so we need to strip column names so they are not dropped. 
+
+```{r}
+library("anndataR")
+library("renv")
+library("Seurat")
+```
+
+Load in object
+```{r}
+obj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Harmony/Harmony_RNA_integrated.rds")
+```
+
+object
+```{r}
+obj
+
+names(obj@reductions)   # confirm exact reduction slot names
+sapply(obj@reductions, function(r) ncol(Embeddings(r)))
+```
+
+```{r}
+DefaultAssay(obj) <- "RNA"
+```
+
+Conversion to adata
+```{r}
+adata <- as_AnnData(
+  obj,
+  assay_name  = "RNA",
+  x_mapping   = "counts",     # or "counts", whichever you use downstream
+  obsm_mapping = list(
+    RNA_pca_int      = "RNA_pca_int",       # LHS = obsm key you want, RHS = Seurat reduction name
+    RNA_harmony      = "RNA_harmony",
+    RNA_harmony_umap = "RNA_harmony_umap"
+  )
+)
+
+
+```
+
+```{r}
+head(adata$obsm)
+head(str(adata$obsm[["RNA_harmony"]]))
+head(dim(adata$obsm[["RNA_harmony"]]) )  # should be n_cells x n_dims, not NULL
+```
+
+Verify that the adata object and the Seurat objects are the same 
+```{r}
+adata
+print("-------------------------")
+obj
+```
+Seurat stores matrices as features x cells, and AnnData as observations x variables, which explains the transposed dimensioms. The Seurat object holds 10 more features, because it holds another assay: HTO. The RNA layers are the same
+
+```{r}
+# Genes in Seurat but not in AnnData
+lost_genes <- setdiff(rownames(obj), rownames(adata$var))
+lost_genes
+
+length(lost_genes)
+
+# Genes in AnnData but not in Seurat
+extra_genes <- setdiff(rownames(adata$var), rownames(obj))
+extra_genes
+
+sum(duplicated(rownames(obj)))
+sum(duplicated(rownames(adata$var)))
+```
+These metrics show no differences? So how come the adata object have less dimensions?
+
+```{r}
+dim(obj)
+dim(adata)
+
+nrow(obj)
+ncol(obj)
+
+adata$shape
+```
+
+```{r}
+# shape
+dim(obj)         # genes × cells
+adata$shape      # cells × genes
+print("-----------head and tail----------")
+
+# head and tail content
+head(colnames(obj))
+head(rownames(adata$obs))
+
+tail(colnames(obj))
+tail(rownames(adata$obs))
+
+print("-----------gene names-----------")
+# gene names 
+head(rownames(obj))
+head(rownames(adata$var))
+
+tail(rownames(obj))
+tail(rownames(adata$var))
+print("-------------expression matrix--------------")
+
+
+# expression matrix
+LayerData(obj, assay = "RNA", layer = "counts")[1:5, 1:5]
+
+adata$layers[["counts"]][1:5, 1:5]
+
+print("-------------cell metadata--------------")
+
+# cell metadata
+head(obj@meta.data)
+
+head(as.data.frame(adata$obs))
+
+```
+
+
+```{r}
+write_h5ad(
+  adata,
+  path = "data/Harmony_RNA_integrated_anndataR.h5ad",
+  mode = "w"
+)
+```
+

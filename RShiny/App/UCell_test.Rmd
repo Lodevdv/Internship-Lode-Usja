@@ -1,0 +1,99 @@
+---
+title: "UCell test"
+output: html_document
+date: "2026-08-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("renv")
+library("Seurat")
+library("UCell")
+```
+
+Load in data
+```{r}
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/RShiny/App/RShiny_tool_object.rds")
+```
+
+gene sets and scores. This block takes too long, so we will inspect the Seuratobject, to see why it takes to long
+```{r}
+# gene.sets <- list(Late_Mature_signature = c("Xcr1","Cxcl9","Cxcl10","Fscn1"))
+# scores <- ScoreSignatures_UCell(GetAssayData(SeuratObj, layer = "data"), features=gene.sets)
+# head(scores)
+```
+
+Check for duplicates, NAs... in the 3 layers
+```{r}
+# all have the same dimensions
+counts_layer <- GetAssayData(SeuratObj, assay = "RNA", layer = "counts") # raw counts
+data_layer   <- GetAssayData(SeuratObj, assay = "RNA", layer = "data") # log normalized
+X_layer      <- GetAssayData(SeuratObj, assay = "RNA", layer = "X") # 
+```
+
+
+```{r}
+# Class and dimensions
+message("counts: ", paste(class(counts_layer), collapse=","), " | dim: ", paste(dim(counts_layer), collapse=" x "))
+message("data:   ", paste(class(data_layer), collapse=","),   " | dim: ", paste(dim(data_layer), collapse=" x "))
+message("X:      ", paste(class(X_layer), collapse=","),      " | dim: ", paste(dim(X_layer), collapse=" x "))
+
+# Are counts and data identical? (they shouldn't be if data is log-normalized)
+identical(counts_layer, data_layer)
+
+# Value range comparison -- normalized data should have small decimals,
+# raw counts should be whole numbers (often larger integers)
+message("counts range: ", paste(range(counts_layer@x), collapse=" - "))
+message("data range:   ", paste(range(data_layer@x), collapse=" - "))
+message("X range:      ", paste(range(X_layer@x), collapse=" - "))
+
+# Are all values in "data" whole numbers? (TRUE would mean it's NOT normalized)
+message("data layer looks like raw counts (all whole numbers)? ",
+        all(data_layer@x == round(data_layer@x)))
+
+# Direct value-by-value comparison on a small subset, for a sanity check
+identical(counts_layer[1:20, 1:20], data_layer[1:20, 1:20])
+identical(data_layer[1:20, 1:20], X_layer[1:20, 1:20])
+```
+```{r}
+# 1. Duplicate gene names -- never actually checked yet, still a real candidate
+message("Duplicate gene names: ", sum(duplicated(rownames(counts_layer))))
+
+# 2. Duplicate cell barcodes
+message("Duplicate cell barcodes: ", sum(duplicated(colnames(counts_layer))))
+
+# 3. Layer join status -- also never confirmed
+print(Layers(SeuratObj, assay = "RNA"))
+
+# 4. NA/Inf check on the data layer specifically
+message("Any NA in data@x: ", anyNA(data_layer@x))
+message("Any Inf in data@x: ", any(is.infinite(data_layer@x)))
+```
+
+```{r}
+ucell_ranks_cache <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/RShiny/App/data/ucell_ranks.rds"
+ucell_ranks <- readRDS(ucell_ranks_cache)
+
+#    using the SAME ucell_ranks your app already built, run in a totally clean script
+#    (no Shiny, no BPPARAM) -- isolates whether the slowness is really about the data,
+#    or about something in the app/reactive/parallel context
+t0 <- Sys.time()
+test_scores <- ScoreSignatures_UCell(data_layer,
+  features = list(test = c("Xcr1", "Cxcl9", "Cxcl10", "Fscn1")),
+  maxRank = 1500)
+message("Serial scoring (cached ranks, clean script): ",
+        round(difftime(Sys.time(), t0, units = "secs"), 1), " sec") 
+```
+investigate the ranks
+```{r}
+ucell_ranks
+```
+Conclusion: all seems fine. The data is a sparse matrix, the ranked file contains the right kind of data (ranks), packages work and the max_rank is the same as pyUCell (default to 1500). So in conclusion, I have no idea why this is so slow in R (approx 15-20 minutes for scoring 4 genes using pre-calculated ranks), as it only takes 3-5 minutes in Python, not using pre-calculated ranks. 
+Session info
+```{r}
+sessionInfo()
+```
+
