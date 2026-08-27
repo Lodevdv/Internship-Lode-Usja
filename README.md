@@ -1,4 +1,4 @@
-# Internship-Lode-Usja
+# Internship-Lode-Usja (August 2026)
 My internship at the Sophie Janssens Lab in the VIB-IRC.
 
 During this internship, we tried to optimize the integration of the samples and the treatment groups using totalVI, scVI, scANVI and Harmony. In the end, the Harmony integration was used for this step (performed by the previous student on this project), as it represented the biology, while removing as much of the technical variability as possible. Next, we improved the celltype annotation based on previous attempts, and using the annotation of the individual datasets. This resulted in clusters representing different stages of the developmental trajectory of cDC1. 
