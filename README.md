@@ -1,7 +1,7 @@
 # Internship-Lode-Usja
 My internship at the Sophie Janssens Lab in the VIB-IRC.
 
-During this internship, we tried to optimize the integration of the samples and the treatment groups using totalVI, scVI, scANVI and Harmony. In the end, the Harmony integration was used for this step, as it represented the biology, while removing as much of the technical variability as possible. Next, we improved the celltype annotation based on previous attempts, and using the annotation of the individual datasets. This resulted in clusters representing different stages of the developmental trajectory of cDC1. 
+During this internship, we tried to optimize the integration of the samples and the treatment groups using totalVI, scVI, scANVI and Harmony. In the end, the Harmony integration was used for this step (performed by the previous student on this project), as it represented the biology, while removing as much of the technical variability as possible. Next, we improved the celltype annotation based on previous attempts, and using the annotation of the individual datasets. This resulted in clusters representing different stages of the developmental trajectory of cDC1. 
 
 Subsequently, we performed downstream processing to use these results in the RShiny tool, allowing others to interact with this dataset. The downstream processing included:
 - DESeq2 analysis on the pseudobulk samples. Three general comparisons were made: Toxoplasma treatment vs WT, Toxoplasma treatment vs other (individual) immunogenic treatments (LNP) and individual LNP treatments vs WT
@@ -19,3 +19,5 @@ Finally, the RShiny app was created with the following tabs:
 - UCell module finding (does not work properly)
 - Seurat based score module
 - Seurat based scoring module based on target genes of given TFs
+
+The goal of this tool is to give insight into this cDC1 dataset, to make a full cDC atlas in the future. 
