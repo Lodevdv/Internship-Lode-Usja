@@ -16,7 +16,7 @@ library("UCell")
 
 Load in data
 ```{r}
-SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/RShiny/App/RShiny_tool_object.rds")
+SeuratObj <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/RShiny_tool_object.rds")
 ```
 
 gene sets and scores. This block takes too long, so we will inspect the Seuratobject, to see why it takes to long
@@ -74,16 +74,20 @@ message("Any Inf in data@x: ", any(is.infinite(data_layer@x)))
 ```
 
 ```{r}
-ucell_ranks_cache <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/RShiny/App/data/ucell_ranks.rds"
-ucell_ranks <- readRDS(ucell_ranks_cache)
+# ucell_ranks_cache <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/RShiny/App/data/ucell_ranks.rds"
+# ucell_ranks <- readRDS(ucell_ranks_cache)
 
+data_test <- data_layer[, sample(ncol(data_layer), 50000)]
+signatures <- list(Late_Mature = c("Xcr1", "Cxcl9", "Cxcl10", "Fscn1"))
 #    using the SAME ucell_ranks your app already built, run in a totally clean script
 #    (no Shiny, no BPPARAM) -- isolates whether the slowness is really about the data,
 #    or about something in the app/reactive/parallel context
 t0 <- Sys.time()
-test_scores <- ScoreSignatures_UCell(data_layer,
-  features = list(test = c("Xcr1", "Cxcl9", "Cxcl10", "Fscn1")),
-  maxRank = 1500)
+test_scores <- ScoreSignatures_UCell(data_test,
+  features = signatures,
+  maxRank = 1500,
+  BPPARAM = BiocParallel::SnowParam())
+
 message("Serial scoring (cached ranks, clean script): ",
         round(difftime(Sys.time(), t0, units = "secs"), 1), " sec") 
 ```
