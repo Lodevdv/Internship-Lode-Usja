@@ -16,4 +16,6 @@ Finally, the RShiny app was created with the following tabs:
 - Marker filtering
 - Forest plots for DESeq2 results
 - TF inference results
-- UCell module finding
+- UCell module finding (does not work properly)
+- Seurat based score module
+- Seurat based scoring module based on target genes of given TFs
