@@ -14,7 +14,7 @@
 # - GSEA and ORA analysis for each celltype in each experiment (C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\GSEA and C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\ORA)
 # - DESeq2 results from LNP vs WT, Toxo vs LNP and Toxo Test vs WT (C:\Users\irc\Desktop\Internship Bioinformatics 2025-2026\Lode\Downstream_processing\DESeq2)
 
-#
+
 # This is a Shiny web application. You can run the application by clicking
 # the 'Run App' button above.
 # The "New names: * `` -> `...1` output when running the tool is from automatic renaming of unnamed columns in the excel file, and is nothing to worry about
@@ -25,7 +25,7 @@
 
 
 # Import libraries
-library("renv")
+# library("renv")
 library("shiny")
 library("shinythemes")
 library("plotly")
@@ -36,8 +36,8 @@ library("DT")
 library("shinycssloaders")
 library("readxl")
 library("dplyr")
-library("decoupleR")
-library("UCell")
+# library("decoupleR")
+# library("UCell")
 
 # prep_app_data.R
 # Run this ONCE, wherever the full Seurat object lives, to extract only what
@@ -48,7 +48,7 @@ library("UCell")
 # umap <- SeuratObj@reductions$RNA_harmony_umap_samuel@cell.embeddings
 # meta <- SeuratObj@meta.data
 # expr <- GetAssayData(SeuratObj, assay = "RNA", layer = "data")
-# 
+
 # # save each separately, so the app can load only what it needs at startup
 # # (all three are needed, but keeping them separate is cleaner than one big list)
 # saveRDS(umap, "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/app_umap.rds")
@@ -64,8 +64,6 @@ library("UCell")
 # rm(SeuratObj)
 # gc()
 
-
-
 # IF YOU TRY TO RUN THE APP, AND AN ERROR RETURNS, then run the following line:
 # source("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/RShiny/App/app.R")
 # this will return the real error, instead of the standard shiny error, which is not informative
@@ -76,6 +74,16 @@ library("UCell")
 umap <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/app_umap.rds")
 meta <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/app_meta.rds")
 expr <- readRDS("C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/app_expr.rds")
+
+# add _WT suffix to the WT experimental groups
+wt_experiments <- unique(as.character(meta$experiment[meta$treatment == "WT"]))
+
+# label helper: appends "_WT" only if the experiment is genuinely WT (per metadata)
+# and doesn't already end in "_WT"
+label_wt <- function(x) {
+  ifelse(grepl("_WT$", x), x,
+         ifelse(x %in% wt_experiments, paste0(x, "_WT"), x))
+}
 
 # genes
 genes <- rownames(expr)
@@ -327,69 +335,7 @@ all_tfs <- unique(unlist(lapply(tf_data_list, function(x) x$data[[tf_gene_col]])
 # # 'https://zenodo.org/records/19773408' is the link
 # collectri_raw_path  <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/CollecTRI2.tsv.gz"
 # 
-# # save a cache of the network
-# collectri_cache_path <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/collectri_net_mouse.rds"
-# 
-# # check if file exists
-# if (file.exists(collectri_cache_path)) {
-#   
-#   collectri_net <- readRDS(collectri_cache_path)
-#   
-# } else {
-#   
-#   if (!file.exists(collectri_raw_path)) {
-#     stop("CollecTRI raw file not found: ", collectri_raw_path)
-#   }
-#   
-# # PARSING THE FILE  
-#   # Line 1 is a metadata/comment line; real header starts on line 2
-#   raw <- readr::read_tsv(
-#     collectri_raw_path,
-#     skip = 1,
-#     col_types = readr::cols(.default = "c")   # read everything as character; we only need 2 columns
-#   )
-#   
-#   # columns in the file
-#   tf_col     <- "Transcription Factor (Associated Gene Name)"
-#   target_col <- "Target Gene (Associated Gene Name)"
-#   
-#   # check if columns are missing from the file
-#   missing_cols <- setdiff(c(tf_col, target_col), colnames(raw))
-#   if (length(missing_cols) > 0) {
-#     stop("CollecTRI raw file missing expected column(s): ", paste(missing_cols, collapse = ", "))
-#   }
-#   
-#   # Simple human -> mouse symbol casing conversion (first letter caps, rest lowercase). (not very robust)
-#   # NOTE: this is an approximation, not a true ortholog map -- a small number of
-#   # genes have mouse symbols that differ from a simple case conversion.
-#   to_mouse_case <- function(x) {
-#     paste0(toupper(substr(x, 1, 1)), tolower(substr(x, 2, nchar(x))))
-#   }
-#   
-#   # create the collectri network from the file
-#   collectri_net <- raw %>%
-#     select(source = !!tf_col, target = !!target_col) %>%
-#     filter(!is.na(source), !is.na(target), source != "", target != "") %>%
-#     distinct(source, target) %>%
-#     mutate(
-#       source = to_mouse_case(source),
-#       target = to_mouse_case(target)
-#     )
-#   
-#   # save a cache of the collectri network that was built, to not always redo this part
-#   saveRDS(collectri_net, collectri_cache_path)
-# }
-# 
-# # sort network based on sources
-# collectri_tfs <- sort(unique(collectri_net$source))
-# 
-# # Sanity check: how much overlap exists between network targets and your dataset's genes.
-# # If this is near-zero, the casing conversion likely isn't matching your gene symbols --
-# # verify before trusting downstream results.
-# .collectri_overlap_check <- length(intersect(collectri_net$target, genes))
-# message("CollecTRI target genes overlapping with dataset: ", .collectri_overlap_check, # this results in 10884 out of 13200 genes in the network having a match
-#         " out of ", length(unique(collectri_net$target)), " unique network targets.")
-# 
+
 # ################################################################################################################################################################
 # ##################### UCell rankings pre-computation ############################################################################################################
 # 
@@ -571,6 +517,37 @@ compute_module_score <- function(expr_mat, features, nbin = 24, ctrl = 100, seed
   )
 }
 
+################################################################################
+##################### Per-experiment UMAP facets (for comparison) ################
+# Static faceted UMAP: one panel per experiment, with all cells shown as light
+# grey background, and that panel's own cells highlighted -- lets the user
+# visually compare a module score UMAP against where each experiment's cells sit.
+# this function is used in the gene module score tabs, to show the subsetted UMAPs too next to the module UMAPs
+build_experiment_facet_plot <- function() {
+  df <- data.frame(
+    UMAP_1 = umap[, "RNAharmonyumapsamuel_1"],
+    UMAP_2 = umap[, "RNAharmonyumapsamuel_2"],
+    experiment = as.character(meta$experiment)
+  )
+  
+  # background: all cells, same coords, repeated once per experiment facet
+  bg <- df %>% select(UMAP_1, UMAP_2)
+  bg_rep <- do.call(rbind, lapply(unique(df$experiment), function(e) {
+    cbind(bg, experiment = e)
+  }))
+  
+  # makes a UMAP each experiment subsetted on all the data and plots it next to each other
+  ggplot() +
+    geom_point(data = bg_rep, aes(x = UMAP_1, y = UMAP_2), color = "grey85", size = 0.3) +
+    geom_point(data = df, aes(x = UMAP_1, y = UMAP_2, color = experiment), size = 0.3) +
+    coord_fixed() +
+    facet_wrap(~ experiment) +
+    theme_classic(base_size = 11) +
+    theme(legend.position = "none",
+          strip.text = element_text(size = 9)) +
+    labs(title = "Cells by experiment (for comparison)", x = "UMAP_1", y = "UMAP_2")
+}
+
 ################################################################################################################################################################
 ########################### Info Table | Home Page #############################################################################################################
 # X-axis (columns)
@@ -654,7 +631,12 @@ ui <- page_navbar(
             .table{
               width: 1200px;
               margin-left:0px;
-        }
+            }
+            .wrap-genes {
+              word-break: break-all;
+              max-width: 300px;
+            }
+
 
           .card .plotly {
               flex: 1;
@@ -953,13 +935,13 @@ gsea_tab <- tabPanel(
   p("Naming is cutoff, because excel sheets have a character limit of 31. So for example for Late Mature cells, the Toxoplasma vs LNP_CpG_LNPs will be called CITEseq_LNP_CpG_LNPs_Late MatuR"),
   sidebarLayout(
     sidebarPanel(
-      
+
       # select which comparison (Toxo vs which LNP) you want
       selectInput(
         "gsea_sheet", "Comparison (celltype / experiment):",
         choices = gsea_sheet_names
       ),
-      
+
       # sort by what
       selectInput(
         "gsea_sort_by", "Sort pathways by:",
@@ -969,7 +951,7 @@ gsea_tab <- tabPanel(
           "FDR q-val (most sig.)"    = "FDR_asc"
         )
       ),
-      
+
       # cutoff value of FDR
       numericInput(
         "gsea_fdr_cutoff", "FDR q-val threshold:",
@@ -998,32 +980,24 @@ ora_tab <- tabPanel(
   "ORA Results",
   p("Select an ORA threshold set and celltype to view enriched pathways ", tags$br(),
     "based on the gene set over-representation analysis. Overlap dictates how many genes in the dataset overlap with the database genes for that pathway.", tags$br(),
-    "P-values indicate statistical significance (FIX: what are the 'old p-values'), and odds ratio measures how strongly the selected gene set is", tags$br(),
+    "P-values indicate statistical significance, and odds ratio measures how strongly the selected gene set is", tags$br(),
     "associated with a particular pathway, compared to what you might expect by chance."),
+  tags$br(),
+  p("These results were calculated from the marker genes list. This list was made using a Wilcoxon rank test for all genes in each experiment separately,", tags$br(),
+    "for each celltype individually. 6 ORA analyses were performed in total, 3 for LogFC 0.5 and 3 for LogFC 1, with 1, 6 or 7 significant", tags$br(),
+    "experiments (meaning the genes involved needed to be significant across n amount of experimental groups, before passing this filtering."),
   br(),
-  p("These results were calculated from the marker genes list. THis list was made using a Wilxocon rank test for all genes in each experiment separately,", tags$br(),
-  "for each celltype individually. 6 ORA analyses were performed in total, 3 for LogFC 0.5 and 3 for LogFC 1, with 1, 6 or 7 significant",tags$br(),
-  "experiments (meaning the genes involved needed to be significant across n amount of experimental groups, before passing this filtering"),
-  br(),
-  p("So in short, this ORA tried to find enriched pathways in a specific celltype across all experimental conditions. The ORA used genes which", tags$br(),
-    "followed these thresholds: LogFC >= 1, pval < 0.05 and significant in at least 5 experimental groups."),
-  
+  p("So in short, this ORA tried to find enriched pathways in a specific celltype across all experimental conditions"),
   sidebarLayout(
     sidebarPanel(
-      
-      # select input ORA file (6 of them can be chosen, see before)
       selectInput(
         "ora_file", "Specify file:",
         choices = names(ora_files)
       ),
-      
-      # select the celltype you want enriched pathways for
       selectInput(
         "ora_sheet", "Celltype:",
-        choices = NULL  # populated server-side based on file
+        choices = NULL
       ),
-      
-      # sort by what
       selectInput(
         "ora_sort_by", "Sort pathways by:",
         choices = c(
@@ -1043,10 +1017,7 @@ ora_tab <- tabPanel(
     mainPanel(
       DTOutput("ora_table"),
       br(),
-      downloadButton("ora_download", "Download this comparison's results (.csv)"),
-      br(), br(),
-      h4("Summary: Term, Odds Ratio, Adjusted P-value"),
-      DTOutput("ora_summary_table")
+      downloadButton("ora_download", "Download this comparison's results (.csv)")
     )
   )
 ),
@@ -1063,7 +1034,9 @@ tf_tab <- tabPanel(
     "pseudobulk data."),
   br(),
   p("Z-score is how many standard deviations the activity score, of that inferred TF, differs from the mean activity score", tags$br(),
-    "of that TF, across all experimental groups. Negative means lower than the mean, positive means higher than the mean."),
+    "of that TF, across all experimental groups. Negative means lower than the mean, positive means higher than the mean.", tags$br(),
+    "In the heatmap, the TFs are ranked according to z-score. In the table below, they are ordered alphabetically. Important", tags$br(),
+    "to note, is that a high z-score does not correlate to a high expression of a gene."),
   
     sidebarLayout(
       sidebarPanel(
@@ -1201,7 +1174,10 @@ module_score_tab <- tabPanel(
       withSpinner(plotOutput("module_umap_plot", height = "600px")),
       br(),
       h4("Gene summary"),
-      DTOutput("module_gene_table")
+      DTOutput("module_gene_table"),
+      br(),
+      h4("Cells by experiment (for comparison)"),
+      withSpinner(plotOutput("module_experiment_facets", height = "700px"))
     )
   )
 ),
@@ -1242,7 +1218,10 @@ module_tf_tab <- tabPanel(
       withSpinner(uiOutput("module_tf_umap_ui")),
       br(),
       h4("Target gene summary"),
-      DTOutput("module_tf_gene_table")
+      DTOutput("module_tf_gene_table"),
+      br(),
+      h4("Cells by experiment (for comparison)"),
+      withSpinner(plotOutput("module_tf_experiment_facets", height = "700px"))
     )
   )
 ),
@@ -1254,6 +1233,8 @@ module_tf_tab <- tabPanel(
            p("Lode Van de Vreken (intern): lodevandevreken@gmail.com"),
            h3("Mentor Cell Atlas:"),
            p("Clint De Nolf"),
+           h3("Github"),
+           p("https://github.com/Lodevdv/Internship-Lode-Usja.git"),
            
            tags$div( class = "input"),
            
@@ -1436,7 +1417,7 @@ server <- function(input, output,session) {
     # Create dataframe
     df <- data.frame(
       
-      # UMAp coordinates
+      # UMAP coordinates
       UMAP_1 = umap[, "RNAharmonyumapsamuel_1"],
       UMAP_2 = umap[, "RNAharmonyumapsamuel_2"]
     )
@@ -1459,7 +1440,6 @@ server <- function(input, output,session) {
       "experiment" = df$experiment,
       "orig.ident" = df$orig.ident
     )
-    
     
     # Create each plot
     lapply(seq_along(plots), function(i) {
@@ -1851,30 +1831,30 @@ server <- function(input, output,session) {
     df
   })
   
-  # same table summary as before (GSEA)
+  # same table as before (GSEA)
   output$ora_table <- renderDT({
     datatable(
       ora_filtered_sorted() %>%
         select(Term, Overlap, `P-value`, `Adjusted P-value`,
-               `Old P-value`, `Old Adjusted P-value`,
                `Odds Ratio`, `Combined Score`, Genes),
-      options = list(pageLength = 20, scrollX = TRUE),
+      options = list(
+        pageLength = 20,
+        scrollX = TRUE,
+        columnDefs = list(
+          list(targets = "Genes", render = JS(
+            "function(data, type, row) {",
+            "  return type === 'display' && data.length > 60 ?",
+            "    data.substr(0, 60) + '...' : data;",
+            "}"
+          ))
+        )
+      ),
       rownames = FALSE
     ) %>%
-      formatRound(columns = c("P-value", "Adjusted P-value", "Old P-value",
-                              "Old Adjusted P-value", "Odds Ratio", "Combined Score"),
+      formatRound(columns = c("P-value", "Adjusted P-value", "Odds Ratio", "Combined Score"),
                   digits = 4)
   })
   
-  output$ora_summary_table <- renderDT({
-    datatable(
-      ora_filtered_sorted() %>%
-        select(Term, `Odds Ratio`, `Adjusted P-value`),
-      options = list(pageLength = 20, scrollX = TRUE),
-      rownames = FALSE
-    ) %>%
-      formatRound(columns = c("Odds Ratio", "Adjusted P-value"), digits = 4)
-  })
   
   output$ora_download <- downloadHandler(
     filename = function() {
@@ -1891,6 +1871,9 @@ server <- function(input, output,session) {
   observeEvent(input$tf_celltype, {
     req(input$tf_celltype)
     entry <- tf_data_list[[input$tf_celltype]]
+    
+    # build a named vector: display label (with _WT) -> real experiment name (unchanged)
+    exp_choices <- setNames(entry$experiments, label_wt(entry$experiments))
     
     updateSelectInput(
       session, "tf_reference_experiment",
@@ -1976,8 +1959,7 @@ server <- function(input, output,session) {
     plot_df <- tf_long()
     plot_df$TF <- factor(plot_df$TF, levels = rev(tf_heatmap_order()))
     
-    # find max z-value
-    z_max <- max(abs(plot_df$z_score), na.rm = TRUE)  # symmetric range around 0
+    z_max <- max(abs(plot_df$z_score), na.rm = TRUE)
     
     subtitle_txt <- if (input$tf_mode == "top_n") {
       paste0("Top ", input$tf_top_n, " TFs by |z-score| in ", input$tf_reference_experiment)
@@ -1985,14 +1967,13 @@ server <- function(input, output,session) {
       "Manually selected TFs"
     }
     
-    # actual creation
     ggplot(plot_df, aes(x = Experiment, y = TF, fill = z_score)) +
       geom_tile(color = "white") +
       scale_fill_gradient2(
         low = "blue", mid = "white", high = "red", midpoint = 0,
-        # define scale
         limits = c(-z_max, z_max)
       ) +
+      scale_x_discrete(labels = label_wt) +   # <-- relabels axis text only
       theme_bw(base_size = 12) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1),
@@ -2005,12 +1986,19 @@ server <- function(input, output,session) {
   
   # create a numeric table
   output$tf_table <- renderDT({
+    df <- tf_selected_data()
+    
+    # apply _WT labeling only to the displayed table, not the underlying data
+    display_names <- colnames(df)
+    display_names[display_names != "TF"] <- label_wt(display_names[display_names != "TF"])
+    colnames(df) <- display_names
+    
     datatable(
-      tf_selected_data(),
+      df,
       options = list(pageLength = 15, scrollX = TRUE),
       rownames = FALSE
     ) %>%
-      formatRound(columns = tf_present_experiments(), digits = 3)
+      formatRound(columns = display_names[display_names != "TF"], digits = 3)
   })
   
   # allow csv output
@@ -2232,6 +2220,11 @@ server <- function(input, output,session) {
     )
   }) 
   
+  output$module_experiment_facets <- renderPlot({
+    build_experiment_facet_plot()
+  })
+  
+  
 ######################################### Module Score (Seurat AddModuleScore-style) #########################################################################
 
   
@@ -2359,6 +2352,9 @@ server <- function(input, output,session) {
     )
   })
   
+  output$module_tf_experiment_facets <- renderPlot({
+    build_experiment_facet_plot()
+  })
 }
 
 # Run the application 
