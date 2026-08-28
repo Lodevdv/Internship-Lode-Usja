@@ -518,36 +518,76 @@ compute_module_score <- function(expr_mat, features, nbin = 24, ctrl = 100, seed
 }
 
 ################################################################################
-##################### Per-experiment UMAP facets (for comparison) ################
-# Static faceted UMAP: one panel per experiment, with all cells shown as light
-# grey background, and that panel's own cells highlighted -- lets the user
-# visually compare a module score UMAP against where each experiment's cells sit.
-# this function is used in the gene module score tabs, to show the subsetted UMAPs too next to the module UMAPs
-build_experiment_facet_plot <- function() {
+##################### Precomputed per-experiment facet plot (static) #############
+# This plot never changes (doesn't depend on any user input), so build it once
+# at startup and cache it as a static PNG, rather than re-rendering ~1.37M points
+# live in every session for every one of the two tabs that use it.
+
+experiment_facet_png_path <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/experiment_facets.png"
+treatment_facet_png_path <- "C:/Users/irc/Desktop/Internship Bioinformatics 2025-2026/Lode/Internship-Lode-Usja/RShiny/App/data/treatment_facets.png"
+
+if (!file.exists(experiment_facet_png_path)) {
+  
   df <- data.frame(
     UMAP_1 = umap[, "RNAharmonyumapsamuel_1"],
     UMAP_2 = umap[, "RNAharmonyumapsamuel_2"],
     experiment = as.character(meta$experiment)
   )
   
-  # background: all cells, same coords, repeated once per experiment facet
-  bg <- df %>% select(UMAP_1, UMAP_2)
+  # downsample the grey background -- visually identical at this density,
+  # but dramatically fewer points to rasterize (10k is plenty for a faint backdrop)
+  set.seed(1)
+  bg_sample <- df[sample(nrow(df), min(10000, nrow(df))), c("UMAP_1", "UMAP_2")]
   bg_rep <- do.call(rbind, lapply(unique(df$experiment), function(e) {
-    cbind(bg, experiment = e)
+    cbind(bg_sample, experiment = e)
   }))
   
-  # makes a UMAP each experiment subsetted on all the data and plots it next to each other
-  ggplot() +
-    geom_point(data = bg_rep, aes(x = UMAP_1, y = UMAP_2), color = "grey85", size = 0.3) +
-    geom_point(data = df, aes(x = UMAP_1, y = UMAP_2, color = experiment), size = 0.3) +
+  p <- ggplot() +
+    geom_point(data = bg_rep, aes(x = UMAP_1, y = UMAP_2),
+               color = "grey85", size = 0.3, shape = ".") +
+    geom_point(data = df, aes(x = UMAP_1, y = UMAP_2, color = experiment),
+               size = 0.3, shape = ".") +
     coord_fixed() +
     facet_wrap(~ experiment) +
     theme_classic(base_size = 11) +
     theme(legend.position = "none",
           strip.text = element_text(size = 9)) +
     labs(title = "Cells by experiment (for comparison)", x = "UMAP_1", y = "UMAP_2")
+  
+  ggsave(experiment_facet_png_path, plot = p, width = 12, height = 9, dpi = 150)
+  
+
 }
 
+if (!file.exists(treatment_facet_png_path)) {
+  
+  df <- data.frame(
+    UMAP_1 = umap[, "RNAharmonyumapsamuel_1"],
+    UMAP_2 = umap[, "RNAharmonyumapsamuel_2"],
+    treatment = as.character(meta$treatment)
+  )
+  # downsample the grey background -- visually identical at this density,
+  # but dramatically fewer points to rasterize (10k is plenty for a faint backdrop)
+  set.seed(1)
+  bg_sample <- df[sample(nrow(df), min(10000, nrow(df))), c("UMAP_1", "UMAP_2")]
+  bg_rep <- do.call(rbind, lapply(unique(df$treatment), function(e) {
+    cbind(bg_sample, treatment = e)
+  }))
+  
+  p <- ggplot() +
+    geom_point(data = bg_rep, aes(x = UMAP_1, y = UMAP_2),
+               color = "grey85", size = 0.3, shape = ".") +
+    geom_point(data = df, aes(x = UMAP_1, y = UMAP_2, color = treatment),
+               size = 0.3, shape = ".") +
+    coord_fixed() +
+    facet_wrap(~ treatment) +
+    theme_classic(base_size = 11) +
+    theme(legend.position = "none",
+          strip.text = element_text(size = 9)) +
+    labs(title = "Cells by treatment (for comparison)", x = "UMAP_1", y = "UMAP_2")
+  
+  ggsave(treatment_facet_png_path, plot = p, width = 12, height = 9, dpi = 150)
+}
 ################################################################################################################################################################
 ########################### Info Table | Home Page #############################################################################################################
 # X-axis (columns)
@@ -1177,7 +1217,9 @@ module_score_tab <- tabPanel(
       DTOutput("module_gene_table"),
       br(),
       h4("Cells by experiment (for comparison)"),
-      withSpinner(plotOutput("module_experiment_facets", height = "700px"))
+      withSpinner(imageOutput("module_experiment_facets", height = "700px")),
+      h4("Cells by treatment"),
+      withSpinner(imageOutput("module_treatment_facets", height = "700px"))
     )
   )
 ),
@@ -1221,7 +1263,9 @@ module_tf_tab <- tabPanel(
       DTOutput("module_tf_gene_table"),
       br(),
       h4("Cells by experiment (for comparison)"),
-      withSpinner(plotOutput("module_tf_experiment_facets", height = "700px"))
+      withSpinner(imageOutput("module_tf_experiment_facets", height = "700px")),
+      h4("Cells by experiment (for comparison)"),
+      withSpinner(imageOutput("module_tf_treatment_facets", height = "700px"))
     )
   )
 ),
@@ -2150,7 +2194,7 @@ server <- function(input, output,session) {
 #     )
 #   })
   
-############################## Module finding via TF (AddModuleScore()) ###################################################################################################
+############################## Module finding (AddModuleScore()) ###################################################################################################
 
   module_result <- eventReactive(input$module_run, {
     req(input$module_genes)
@@ -2220,14 +2264,16 @@ server <- function(input, output,session) {
     )
   }) 
   
-  output$module_experiment_facets <- renderPlot({
-    build_experiment_facet_plot()
-  })
+  output$module_experiment_facets <- renderImage({
+    list(src = experiment_facet_png_path, width = "100%", height = "700px")
+  }, deleteFile = FALSE)
+  
+  output$module_treatment_facets <- renderImage({
+    list(src = treatment_facet_png_path, width = "100%", height = "700px")
+  }, deleteFile = FALSE)
   
   
-######################################### Module Score (Seurat AddModuleScore-style) #########################################################################
-
-  
+######################################### Module Score finding via TF (Seurat AddModuleScore-style) #########################################################################
   observe({
     updateSelectizeInput(session, "module_tf_tfs", choices = collectri_tfs, server = TRUE)
   })
@@ -2352,9 +2398,13 @@ server <- function(input, output,session) {
     )
   })
   
-  output$module_tf_experiment_facets <- renderPlot({
-    build_experiment_facet_plot()
-  })
+  output$module_tf_experiment_facets <- renderImage({
+    list(src = experiment_facet_png_path, width = "100%", height = "700px")
+  }, deleteFile = FALSE)
+  
+  output$module_tf_treatment_facets <- renderImage({
+    list(src = treatment_facet_png_path, width = "100%", height = "700px")
+  }, deleteFile = FALSE)
 }
 
 # Run the application 
